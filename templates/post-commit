@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Set JIRA credentials and domain
+JIRA_DOMAIN="https://your-domain.atlassian.net"
+JIRA_USER="your-email@example.com"
+JIRA_API_TOKEN="your-api-token"
+JIRA_API_ENDPOINT="$JIRA_DOMAIN/rest/api/2/issue"
+
+# Get the last commit message
+commit_message=$(git log -1 --pretty=%B)
+
+# Function to post a comment on a JIRA ticket
+post_jira_comment() {
+    local ticket_key=$1
+    local comment_message=$2
+    local commit_hash=$3
+
+    # Create the comment payload
+    payload=$(cat <<EOF
+{
+    "body": "Commit: [$commit_hash]\n\nMessage:\n$comment_message"
+}
+EOF
+)
+
+    # Post the comment using curl
+    response=$(curl -s -w "%{http_code}" -o /dev/null \
+      --user "$JIRA_USER:$JIRA_API_TOKEN" \
+      -X POST \
+      --data "$payload" \
+      -H "Content-Type: application/json" \
+      "$JIRA_API_ENDPOINT/$ticket_key/comment")
+
+    if [ "$response" -eq 201 ]; then
+        echo "Comment posted successfully to $ticket_key."
+    else
+        echo "Failed to post comment to $ticket_key. HTTP Status: $response"
+    fi
+}
+
+# Check if the commit message starts with DVD-## or TDV-##
+if [[ $commit_message =~ ^(DVD|TDV)-[0-9]{2,3} ]]; then
+    # Extract the ticket key and print the commit info
+    ticket_key=$(echo "$commit_message" | grep -oE "^(DVD|TDV)-[0-9]{2,3}")
+    commit_hash=$(git log -1 --pretty=%h)
+
+    # Post the commit message and hash as a comment to the JIRA ticket
+    post_jira_comment "$ticket_key" "$commit_message" "$commit_hash"
+else
+    echo "Commit message does not start with a valid ticket key."
+fi
